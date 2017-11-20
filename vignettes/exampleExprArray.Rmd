@@ -1,0 +1,33 @@
+
+library(predictcellcomposition)
+
+##load/read expression data and covariates
+data
+covariates
+##convert expression data identifiers to ensembl gene identifiers
+data
+
+##load predictor
+load("RNAseqPredictor.RData")
+
+predicted <- prediction(predictor, data, covariates, ncomp=20)
+
+##load/read measured cell percentages
+measured
+
+plotting <- function(measured, predicted, xlab="predicted", ylab="measured")
+{  
+  op <- par(mfcol=c(3, 2), mar=c(4, 4, 3, 1))
+  for(k in 1:ncol(measured))
+    {
+      type <- colnames(measured)[k]
+      cme <- cor(predicted[,k], measured[,k])
+      plot(predicted[,k], measured[,k], main=paste(type, " (correlation: ", round(cme, 2), ")", sep=""), xlab=xlab, ylab=ylab, bty="n", pty="s")     
+      abline(lm(measured[,k]~0+predicted[,k]), col=2, lty=1, lwd=2)
+      abline(0, 1, col="grey", lty=1, lwd=2)
+      grid()
+    }
+  par(op)
+}
+
+plotting(measured, predicted, xlab="predicted", ylab="measured")

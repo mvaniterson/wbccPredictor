@@ -1,0 +1,114 @@
+##450k example
+##prediction using BIOS
+
+##load data
+library(GenomicFeatures)
+path <- "/virdir/Scratch/RP3_data/450k"
+load(file.path(path, "methData_BIOS_02042015.RData")) ##functional normalized methylaid qceed
+methData ##SummarizedExperiment
+
+data <- assays(methData)$beta
+dim(data) ##[1] 485512   4030
+b
+data[1:5, 1:5]
+
+##keep only CpGs which do not have any NA's
+keep <- apply(data, 1, function(x) all(!is.na(x)))
+table(keep)
+## FALSE   TRUE
+##359883 125629
+data <- data[keep, ]
+dim(data) ##[1] 125629   4030
+
+##get cellPercentages
+cellPercentages <- as.data.frame(colData(methData)[, c("Neut_Perc", "Lymph_Perc", "Mono_Perc", "Eos_Perc", "Baso_Perc")])
+cellPercentages <- apply(cellPercentages, 2, as.numeric)
+cellPercentages
+
+##get covariates
+covariates <- as.data.frame(colData(methData))
+covariates <- covariates[, c("DNA_BloodSampling_Age", "Sex", "Sentrix_Position")]
+colnames(covariates) <- c("Age", "Gender", "Sentrix_Position")
+covariates[,3] <- as.integer(as.factor(covariates[,3]))
+covariates <- apply(covariates, 2, as.numeric)
+covariates
+
+##rename using UUID
+rownames(covariates) <- rownames(cellPercentages) <- colnames(data) <- colData(methData)$uuid
+head(covariates)
+head(cellPercentages)
+data[1:6, 1:6]
+
+##get data with complete cell percentages
+nas <- apply(cellPercentages, 1, function(x) any(is.na(x)))
+table(nas)
+##FALSE  TRUE
+## 2046  1984
+complete <- which(!nas)
+cellPercentages[complete,]
+
+##split complete in train (2/3) and test (1/3)
+##stratified splitting of the data might be better if sample size is small < 500?
+##for example using split.sample from caTools
+trainId <- sample(complete, 2*length(complete)/3)
+testId <- complete[!(complete %in% trainId)]
+
+dataTrain <- data[,trainId]
+covarTrain <- covariates[trainId,]
+cellPerTrain <- cellPercentages[trainId,]
+
+gc() ##try to release
+
+## ##make predictor
+## library(predictcellcomposition)
+
+## ##do cross-validation in parallel default CV is 10 segments
+## ##use 10 cores e.g. on the VM
+## ##see ?mvr for more parallel examples 
+
+## predictor <- train(dataTrain, covarTrain, cellPerTrain, ncomp=50, validation = "CV")
+
+## save(predictor, file="/virdir/Scratch/mviterson/450kPredictor.RData")
+
+## ##use the pls functions to inspect the object
+## summary(predictor)
+## cumsum(explvar(predictor))
+## barplot(cumsum(explvar(predictor)), las=2, ylab="Cumulative Variance Explained")
+## validationplot(predictor, val.type="R2") ##select optimal number of components e.g. 10
+
+## predicted <- 10^predictor$fitted.values[,,20]-1
+## measured <-  cellPerTrain
+
+plotting <- function(measured, predicted, xlab="predicted", ylab="measured")
+{ 
+  op <- par(mfcol=c(3,2), mar=c(4, 4, 3, 1))
+  for(k in 1:ncol(measured))
+    {
+      type <- colnames(measured)[k]
+      cme <- cor(predicted[,k], measured[,k])
+      plot(predicted[,k], measured[,k], main=paste(type, " (correlation: ", round(cme, 4), ")", sep=""), bty="n", pty="s")
+      abline(lm(measured[,k]~0+predicted[,k]), col=2, lty=1, lwd=2)
+      abline(0, 1, col="grey", lty=1, lwd=2)
+      grid()
+    }
+  par(op)
+}
+
+## pdf(file.path(path, "450kpredicted_train.pdf"))
+## plotting(measured, predicted)
+## dev.off()
+
+##test predictor
+dataTest <- data[,testId]
+covarTest <- covariates[testId,]
+cellPerTest <- cellPercentages[testId,]
+
+## ##predict cell percentage
+## predicted <- prediction(predictor, dataTest, covarTest, ncomp=20)
+## head(predicted)
+## dim(predicted)
+
+## pdf(file.path(path, "450kpredicted_test.pdf"))
+## plotting(cellPerTest, predicted)
+## dev.off()
+

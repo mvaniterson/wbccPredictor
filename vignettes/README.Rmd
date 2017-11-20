@@ -1,0 +1,55 @@
+---
+title: "Predict wbcc using partial-least squares based on RNAseq or DNA methylation data"
+author: Maarten van Iterson, Department of Molecular Epidemiology, Leiden University Medical Center, Leiden, The Netherlands
+date: "`r BiocStyle:::doc_date()`"
+output:
+ github_document
+---
+
+```{r style, echo = FALSE, results = 'hide', message=FALSE}
+require(BiocStyle)
+require(knitr)
+markdown()
+opts_chunk$set(eval=TRUE, tidy=TRUE, highlight=TRUE, fig.path="figures/")
+```
+
+!!! This is a project in development !!!
+
+# wbccPredictor
+**wbccPredictor** can be used to build a predictor, using
+partial-least-squares, for WBCC based on gene expression
+or DNA methylation data. Or **wbccPredictor** can be used to predict WBCC
+using the build-in predictor for both gene expression and
+DNA methylation data.
+
+# Install
+
+Installation requires the package
+[devtools](https://github.com/hadley/devtools),
+
+```{r, eval=FALSE}
+library(devtools)
+install_github("mvaniterson/wbccPredictor")
+```
+or using the `biocLite` function downloaded from
+[BioConductor](https://www.bioconductor.org/install/).
+ 
+```{r, eval=FALSE}
+source("http://bioconductor.org/biocLite.R")
+biocLite("mvaniterson/wbccPredictor")
+```
+
+# Using RNAseq data #
+
+```{r child ="exampleRNAseq.Rmd"}
+```
+
+# Using DNA methylation data #
+
+see [example R script for 450K data](demo/example450k.R)
+
+# TODO 
+
+* extend README
+* remove imputation of NA's this should be up to the user
+

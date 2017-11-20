@@ -1,0 +1,19 @@
+Package: wbccPredictor
+Type: Package
+Title: A gene expression or DNA methylation based predictor for white
+    blood cell counts
+Version: 1.0.1
+Date: 2016-02-24
+Author: Maarten van Iterson
+Maintainer: M. van Iterson <m.van_iterson@lumc.nl>
+Description: wbccPredictor can be used to build a predictor, using
+    partial-least-squares, for WBCC based on gene expression
+    or DNA methylation data. Or wbccPredictor can be used to predict WBCC
+    using the build-in predictor for both gene expression and
+    DNA methylation data.
+URL: https://github.com/mvaniterson/wbccPredictor
+License: GPL (>= 2)
+Depends:
+    R (>= 3.0.0),
+    pls
+RoxygenNote: 6.0.1

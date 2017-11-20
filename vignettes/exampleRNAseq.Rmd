@@ -1,0 +1,179 @@
+# Building the predictor #
+
+In this example BIOS RNAseq freeze1 data is used.
+
+```{r, message=FALSE}
+library(BIOSRutils)
+data(rnaSeqData_freeze1_06032015BIOS)
+```
+
+The  RNAseq counts are normalized using `r Biocpkg("edgeR")` TMM-function.
+
+Some experimentation showed that strong filtering improves the performance of the predictor!
+
+```{r, message=FALSE}
+library(edgeR)
+library(GenomicFeatures)
+d <- DGEList(counts=assays(rnaSeqData)$counts, remove.zeros=TRUE)
+keep <- rowSums(d$counts > 100) > 0.99*ncol(d)
+d <- d[keep,]
+dim(d) #[1] 13778  2116
+library(genefilter)
+sds <- rowSds(d$counts)
+keep <- sds > quantile(sds, prob=0.50)
+sum(keep)
+d <- d[keep,]
+dim(d) #[1] 6889 2116
+d <- calcNormFactors(d)
+data <- cpm(d, log=TRUE) ##TMM CPM
+data[1:5, 1:5]
+```
+
+Next cell percentages and covariates need to be extracted.
+
+```{r}
+cellPercentages <- as.data.frame(colData(rnaSeqData)[, c("Neut_Perc", "Lymph_Perc", "Mono_Perc", "Eos_Perc", "Baso_Perc")])
+colnames(cellPercentages) <- c("Neutrophils", "Lymphocytes", "Monocytes", "Eosinophils", "Basophils")
+cellPercentages <- apply(cellPercentages, 2, as.numeric)
+head(cellPercentages)
+```
+
+```{r}
+covariates <- as.data.frame(colData(rnaSeqData))
+covariates <- covariates[, c("RNA_BloodSampling_Age", "Sex")]
+colnames(covariates) <- c("Age", "Gender")
+covariates <- apply(covariates, 2, as.numeric)
+head(covariates)
+```
+Make sure all data object have the same id.
+
+```{r}
+rownames(covariates) <- rownames(cellPercentages) <-  colnames(data) <- colData(rnaSeqData)$uuid
+head(covariates)
+head(cellPercentages)
+data[1:6, 1:6]
+```
+Find out which samples have complete cell percentages available.
+
+```{r}
+nas <- apply(cellPercentages, 1, function(x) any(is.na(x)))
+table(nas)
+```
+And which are incomplete
+
+```{r}
+complete <- which(!nas)
+head(cellPercentages[complete,])
+```
+
+split complete in train (2/3) and test (1/3) **stratified splitting of
+the data might be better if sample size is small < 500? for example
+using split.sample from caTools**
+
+```{r}
+trainId <- sample(complete, 2*length(complete)/3)
+testId <- complete[!(complete %in% trainId)]
+```
+
+```{r}
+dataTrain <- data[,trainId]
+covarTrain <- covariates[trainId,]
+cellPerTrain <- cellPercentages[trainId,]
+```
+
+Now build the predictor!
+
+```{r, message=FALSE}
+library(wbccPredictor)
+pls.options(parallel=8) ##use 10 cores e.g. on the VM
+predictor <- train(dataTrain, covarTrain, cellPerTrain, ncomp=250, validation = "CV", model = formula(cellPercentages ~ covariates + data), keep.model=TRUE)
+```
+
+The usual `r CRANpkg("pls")` functions can be used to inspect the
+predictor-object. For example,
+
+```{r, eval=FALSE}
+summary(predictor)
+cumsum(explvar(predictor))
+```
+and,
+
+```{r}
+barplot(cumsum(explvar(predictor)), las=2, ylab="Cumulative Variance Explained")
+validationplot(predictor, val.type="R2", ncomp=1:50) ##select optimal number of components
+validationplot(predictor, val.type="RMSEP", ncomp=1:250) ##select optimal number of components
+validationplot(predictor, val.type="RMSEP", ncomp=1:50) ##select optimal number of components
+```
+
+Determine optimal number of pls-components e.g. 40 and save the
+coefficients like this:
+
+```{r}
+RNAseqPredictor <- coef(predictor, ncomp = 40, intercept = TRUE)[,,1]
+```
+
+It is interesting to known which covariates have the highest
+prediction value and store these as well.
+
+```{r}
+W <- predictor$loading.weights
+ord <- order(abs(W[, 40]), decreasing=TRUE)
+RNAseqTop <- gsub("data|covariates", "", rownames(W)[ord[1:1000]])
+```
+
+```{r}
+save(RNAseqTop, file="../data/RNAseqTop.RData")
+save(RNAseqPredictor, file="../data/RNAseqPredictor.RData")
+```
+
+# Some validation using the Test-set #
+
+```{r, }
+corrplot <- function(measured, predicted, xlab="predicted", ylab="measured", ...) {
+    for(k in 1:ncol(measured)) {
+        type <- colnames(measured)[k]
+        pc <- signif(cor(predicted[,k], measured[,k]), 3)
+        ic <- signif(icc(predicted[,k], measured[,k]), 3)
+        plot(predicted[,k], measured[,k],
+             main=paste(type, " (Prs: ", pc, ", ICC: ", ic, ")", sep=""),
+             xlab=xlab, ylab=ylab, bty="n", pty="s", ...)
+        abline(lm(measured[,k]~0+predicted[,k]), col=2, lty=1, lwd=2)
+        abline(0, 1, col="grey", lty=1, lwd=2)
+        grid()
+    }
+}
+
+baplot <- function (x, y, regline = FALSE, la = c("log", "lin", "both"),
+                    main = "", xlab = "Average", ylab = "Difference") {
+    la <- match.arg(la)
+    for (k in 1:ncol(x))
+        wbccPredictor:::.baplot(x[, k], y[, k],
+                                regline = regline,
+                                la = la, main = paste0(colnames(x)[k]),
+                                xlab = xlab, ylab = ylab)
+
+}
+```
+
+This is no surprise!
+
+```{r}
+predictedRNATrain <- predictor$fitted.values[,,40]
+op <- par(mfcol=c(3,2))
+corrplot(cellPerTrain, predictedRNATrain, xlab="predicted", ylab="measured")
+par(op)
+```
+Now let predict cell composition for the test data and plot.
+
+```{r}
+dataTest <- data[,testId]
+covarTest <- covariates[testId,]
+cellPerTest <- cellPercentages[testId,]
+predictedRNATest <- prediction(predictor, dataTest, covarTest, ncomp=40, transformation=function(x) x)
+op <- par(mfcol=c(3,2))
+corrplot(cellPerTest, predictedRNATest, xlab="measured (%)", ylab="predicted (%)")
+par(op)
+op <- par(mfcol=c(3,2))
+baplot(cellPerTest, predictedRNATest, la="lin", xlab="Average: meas. - pred. (%)", ylab="Difference: meas. - pred. (%)", regline=FALSE)
+par(op)
+```
